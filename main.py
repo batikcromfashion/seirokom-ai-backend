@@ -4,8 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
 
-# আপনার Gemini API Key
-GEMINI_API_KEY = "AQ.Ab8RN6Igf31wCwUAHln3BDYzv58E-_FSMPndPLmXLJ3TWaRm-A"
+# Render-এর Environment Variable থেকে API Key গ্রহণ করা হচ্ছে
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key=GEMINI_API_KEY)
 
