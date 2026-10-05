@@ -1,13 +1,13 @@
 import os
 import requests
 import google.generativeai as genai
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 app = FastAPI()
 
-# CORS সেটআপ (যাতে অ্যাপ ও ওয়েবসাইট ব্যাকএন্ডের সাথে যোগাযোগ করতে পারে)
+# CORS সেটআপ
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,11 +16,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Render Environment Variables থেকে কী ও টোকেনগুলো গ্রহণ করা
+# Render Environment Variables থেকে টোকেন গ্রহণ
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 PAGE_ID = os.getenv("PAGE_ID", "1252524921281306")
 AD_ACCOUNT_ID = os.getenv("AD_ACCOUNT_ID")
+VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "seirokom_secret_token")
 
 # Gemini AI কনফিগারেশন
 if GEMINI_API_KEY:
@@ -52,7 +53,52 @@ class AdRequest(BaseModel):
 def home():
     return {"status": "SeiRokom AI Backend is running fully!"}
 
-# ২. AI Chatbot এন্ডপয়েন্ট
+# ২. Meta Webhook ভেরিফিকেশন (GET Request)
+@app.get("/webhook")
+async def verify_webhook(request: Request):
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+    
+    if mode and token:
+        if mode == "subscribe" and token == VERIFY_TOKEN:
+            return Response(content=challenge, status_code=200)
+        return Response(status_code=403)
+    return Response(status_code=400)
+
+# ৩. Meta Webhook মেসেজ রিসিভ (POST Request)
+@app.post("/webhook")
+async def receive_webhook(request: Request):
+    data = await request.json()
+    
+    # ইনকামিং ফেসবুক মেসেজ প্রসেস করা
+    if data.get("object") == "page":
+        for entry in data.get("entry", []):
+            for messaging_event in entry.get("messaging", []):
+                sender_id = messaging_event.get("sender", {}).get("id")
+                
+                if messaging_event.get("message") and "text" in messaging_event["message"]:
+                    user_text = messaging_event["message"]["text"]
+                    
+                    # Gemini দিয়ে রেসপন্স তৈরি
+                    try:
+                        ai_response = model.generate_content(user_text).text
+                    except Exception:
+                        ai_response = "ধন্যবাদ আমাদের সাথে যোগাযোগের জন্য! SeiRokom Fashion-এ আপনাকে স্বাগতম।"
+                    
+                    # ফেসবুক পেজ থেকে ইউজারকে মেসেজ পাঠানো
+                    if PAGE_ACCESS_TOKEN and sender_id:
+                        send_url = f"https://graph.facebook.com/v26.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
+                        payload = {
+                            "recipient": {"id": sender_id},
+                            "message": {"text": ai_response}
+                        }
+                        requests.post(send_url, json=payload)
+                        
+    return Response(content="EVENT_RECEIVED", status_code=200)
+
+# ৪. AI Chatbot এন্ডপয়েন্ট (ওয়েবসাইটের জন্য)
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
@@ -61,7 +107,7 @@ async def chat_endpoint(request: ChatRequest):
     except Exception as e:
         return {"reply": "দুঃখিত, এই মুহূর্তে উত্তর দিতে সমস্যা হচ্ছে। অনুগ্রহ করে একটু পর চেষ্টা করুন।"}
 
-# ৩. ফেসবুক পেজে পোস্ট করার এন্ডপয়েন্ট
+# ৫. ফেসবুক পেজে পোস্ট করার এন্ডপয়েন্ট
 @app.post("/facebook/post")
 def create_facebook_post(data: PostRequest):
     if not PAGE_ACCESS_TOKEN:
@@ -75,7 +121,7 @@ def create_facebook_post(data: PostRequest):
     response = requests.post(url, data=payload)
     return response.json()
 
-# ৪. ফেসবুক এড ক্যাম্পেইন তৈরি করার এন্ডপয়েন্ট
+# ৬. ফেসবুক এড ক্যাম্পেইন তৈরি করার এন্ডপয়েন্ট
 @app.post("/facebook/ad")
 def create_ad_campaign(data: AdRequest):
     if not PAGE_ACCESS_TOKEN or not AD_ACCOUNT_ID:
