@@ -1,48 +1,53 @@
 import os
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import requests
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import google.generativeai as genai
-
-# Render-এর Environment Variable থেকে API Key গ্রহণ করা হচ্ছে
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-genai.configure(api_key=GEMINI_API_KEY)
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Render Environment Variables থেকে টোকেন নেওয়া হবে
+PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
+PAGE_ID = os.getenv("PAGE_ID", "1252524921281306")
+AD_ACCOUNT_ID = os.getenv("AD_ACCOUNT_ID")
 
-SYSTEM_INSTRUCTION = """
-আপনি SeiRokom Fashion-এর অফিশিয়াল AI অ্যাসিস্ট্যান্ট।
-আপনার দায়িত্ব হলো কাস্টমারদের পোশাক পছন্দ করতে, সাইজ বেছে নিতে এবং তাদের প্রশ্নের উত্তর দিতে সাহায্য করা।
-ব্যবসার প্রোগ্রামগুলো সম্পর্কে কেউ জানতে চাইলে বলবেন:
-১. ড্রপশিপিং
-২. ডিলারশিপ
-৩. স্টক পার্টনার
-৪. ডেলিভারি ম্যান
-যেকোনো প্রোগ্রামে যোগ দিতে চাইলে তাদের সংশ্লিষ্ট বাটনে ক্লিক করে তথ্য দিতে বলবেন।
-সবসময় বিনয়ী ও প্রফেশনাল ভাষায় বাংলায় উত্তর দেবেন।
-"""
-
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=SYSTEM_INSTRUCTION
-)
-
-class ChatRequest(BaseModel):
+class PostRequest(BaseModel):
     message: str
 
-@app.post("/api/chat")
-async def chat_endpoint(request: ChatRequest):
-    try:
-        response = model.generate_content(request.message)
-        return {"reply": response.text}
-    except Exception as e:
-        return {"reply": "দুঃখিত, এই মুহূর্তে উত্তর দিতে সমস্যা হচ্ছে। অনুগ্রহ করে একটু পর চেষ্টা করুন।"}
+class AdRequest(BaseModel):
+    name: str
+    objective: str = "OUTCOME_TRAFFIC"
+
+@app.get("/")
+def home():
+    return {"status": "SeiRokom AI Backend is running!"}
+
+# ফেসবুক পেজে অটোমেটিক পোস্ট করার এন্ডপয়েন্ট
+@app.post("/facebook/post")
+def create_facebook_post(data: PostRequest):
+    if not PAGE_ACCESS_TOKEN:
+        raise HTTPException(status_code=500, detail="PAGE_ACCESS_TOKEN পাওয়া যায়নি")
+    
+    url = f"https://graph.facebook.com/v26.0/{PAGE_ID}/feed"
+    payload = {
+        "message": data.message,
+        "access_token": PAGE_ACCESS_TOKEN
+    }
+    response = requests.post(url, data=payload)
+    return response.json()
+
+# ফেসবুক এড ক্যাম্পেইন তৈরি করার এন্ডপয়েন্ট
+@app.post("/facebook/ad")
+def create_ad_campaign(data: AdRequest):
+    if not PAGE_ACCESS_TOKEN or not AD_ACCOUNT_ID:
+        raise HTTPException(status_code=500, detail="Token অথবা Ad Account ID সেট করা নেই")
+    
+    url = f"https://graph.facebook.com/v26.0/{AD_ACCOUNT_ID}/campaigns"
+    payload = {
+        "name": data.name,
+        "objective": data.objective,
+        "status": "PAUSED",
+        "special_ad_categories": [],
+        "access_token": PAGE_ACCESS_TOKEN
+    }
+    response = requests.post(url, data=payload)
+    return response.json()
