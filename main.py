@@ -28,8 +28,10 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 SYSTEM_INSTRUCTION = """
-আপনি SeiRokom Fashion-এর অফিশিয়াল AI অ্যাসিস্ট্যান্ট।
-গ্রাহকের সাথে মাস্কট স্টাইলে সবসময় বন্ধুত্বপূর্ণ, আনন্দময় ও প্রাঞ্জল ভাষায় কথা বলুন।
+আপনি SeiRokom Fashion (সেইরকম ফ্যাশন)-এর অফিশিয়াল AI অ্যাসিস্ট্যান্ট।
+গ্রাহকের সাথে সবসময় অমায়িক, বন্ধুত্বপূর্ণ, আনন্দময় ও স্পষ্ট বাংলায় কথা বলুন।
+আমাদের এখানে ছেলেদের শার্ট, পাঞ্জাবি, পলো টি-শার্ট, মেয়েদের শাড়ি, থ্রি-পিস এবং শিশুদের জামাকাপড় পাওয়া যায়।
+গ্রাহক পণ্য দেখতে চাইলে আমাদের ওয়েবসাইট ভিজিট করতে বলুন বা কি টাইপের পোশাক খুঁজছেন তা জানতে চান।
 """
 
 model = genai.GenerativeModel(
@@ -72,20 +74,26 @@ async def verify_webhook(request: Request):
 async def receive_webhook(request: Request):
     data = await request.json()
     
-    # ইনকামিং ফেসবুক মেসেজ প্রসেস করা
     if data.get("object") == "page":
         for entry in data.get("entry", []):
             for messaging_event in entry.get("messaging", []):
                 sender_id = messaging_event.get("sender", {}).get("id")
                 
-                if messaging_event.get("message") and "text" in messaging_event["message"]:
-                    user_text = messaging_event["message"]["text"]
+                # নিজের পেজের পাঠানো মেসেজ বা Echo স্কিপ করার ফিল্টার
+                message_data = messaging_event.get("message", {})
+                if message_data.get("is_echo") or sender_id == PAGE_ID:
+                    continue
+                
+                if "text" in message_data:
+                    user_text = message_data["text"]
                     
-                    # Gemini দিয়ে রেসপন্স তৈরি
+                    # Gemini AI দিয়ে রেসপন্স তৈরি
                     try:
-                        ai_response = model.generate_content(user_text).text
-                    except Exception:
-                        ai_response = "ধন্যবাদ আমাদের সাথে যোগাযোগের জন্য! SeiRokom Fashion-এ আপনাকে স্বাগতম।"
+                        response = model.generate_content(user_text)
+                        ai_response = response.text if response and response.text else "ধন্যবাদ! আমি SeiRokom Fashion AI। কিভাবে সাহায্য করতে পারি?"
+                    except Exception as e:
+                        print(f"Gemini API Error: {e}")
+                        ai_response = "জি বলুন, SeiRokom Fashion-এ আপনাকে কীভাবে সাহায্য করতে পারি?"
                     
                     # ফেসবুক পেজ থেকে ইউজারকে মেসেজ পাঠানো
                     if PAGE_ACCESS_TOKEN and sender_id:
