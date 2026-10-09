@@ -20,12 +20,18 @@ VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "seirokom_secret_token")
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 SYSTEM_INSTRUCTION = """
-আপনি SeiRokom Fashion (সেইরকম ফ্যাশন)-এর অফিশিয়াল AI অ্যাসিস্ট্যান্ট।
-গ্রাহকের সাথে সবসময় অমায়িক, বন্ধুত্বপূর্ণ, আনন্দময় ও স্পষ্ট বাংলায় কথা বলুন।
-আমাদের এখানে ছেলেদের শার্ট, পাঞ্জাবি, পলো টি-শার্ট, টি-শার্ট এবং শীতের কালেকশন পাওয়া যায়।
-সাইজ: M, L, XL, XXL। ডেলিভারি 2-3 দিন। 
-যদি কেউ বলে 'কেমন আছেন' তাহলে সুন্দর করে উত্তর দাও, একই কথা বারবার বলবে না।
+তুমি SeiRokom Fashion এর AI অ্যাসিস্ট্যান্ট।
+তোমার তথ্যের মূল উৎস: https://batikcromfashion.github.io/SeiRokom-Fashion-/
+তোমার কাজ:
+1. কাস্টমারের প্রশ্ন বুঝে ওই ওয়েবসাইটের প্রোডাক্ট (শার্ট, পাঞ্জাবি) অনুযায়ী সুন্দর বাংলায় উত্তর দাও।
+2. যদি বাচ্চাদের প্রোডাক্ট চায়, বলো: আপাতত আমাদের বড়দের M,L,XL,XXL আছে, বাচ্চাদের কালেকশন খুব শিগ্রই আসবে।
+3. একই বাক্য বারবার বলবে না। "আপনি '...' বলেছেন" এই লাইনটা বলবে না।
+4. সালাম দিলে ভদ্রভাবে সালামের উত্তর দাও।
+5. উত্তর ছোট, সুন্দর ও বন্ধুসুলভ রাখো।
 """
+
+WEBSITE_URL = "https://batikcromfashion.github.io/SeiRokom-Fashion-/"
+WHATSAPP_URL = "https://wa.me/8801645008919"
 
 @app.get("/")
 def home():
@@ -51,16 +57,48 @@ async def receive_webhook(request: Request):
                     user_text = message["text"]
                     try:
                         resp = client.models.generate_content(
-                            model="gemini-2.0-flash",
+                            model="gemini-1.5-flash",
                             contents=f"{SYSTEM_INSTRUCTION}\n\nUser: {user_text}"
                         )
                         bot_text = resp.text.strip()
                     except Exception as e:
                         print(f"GEMINI ERROR: {e}")
-                        bot_text = f"আলহামদুলিল্লাহ ভালো আছি! আপনি '{user_text}' বলেছেন। আমাদের M,L,XL,XXL সাইজে শার্ট, পাঞ্জাবি আছে। কোনটা দেখবেন?"
+                        bot_text = f"আসসালামু আলাইকুম! আমাদের প্রিমিয়াম শার্ট ও পাঞ্জাবি কালেকশন আছে M,L,XL,XXL সাইজে। আপনি কোনটা দেখতে চান?"
 
+                    # 1st message - AI reply
                     url = f"https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-                    payload = {"recipient": {"id": sender_id}, "message": {"text": bot_text[:1800]}}
-                    r = requests.post(url, json=payload)
+                    payload1 = {
+                        "recipient": {"id": sender_id},
+                        "message": {"text": bot_text[:1800]}
+                    }
+                    requests.post(url, json=payload1)
+                    
+                    # 2nd message - Buttons
+                    payload2 = {
+                        "recipient": {"id": sender_id},
+                        "message": {
+                            "attachment": {
+                                "type": "template",
+                                "payload": {
+                                    "template_type": "button",
+                                    "text": "আরো কালেকশন দেখতে বা অর্ডার করতে নিচের বাটনে ক্লিক করুন:",
+                                    "buttons": [
+                                        {
+                                            "type": "web_url",
+                                            "url": WEBSITE_URL,
+                                            "title": "🛍️ বিস্তারিত দেখুন"
+                                        },
+                                        {
+                                            "type": "web_url",
+                                            "url": WHATSAPP_URL,
+                                            "title": "💬 হোয়াটসঅ্যাপে যোগাযোগ"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                    r = requests.post(url, json=payload2)
                     print(f"FB Send: {r.status_code}")
+
     return Response(content="ok", status_code=200)
