@@ -24,23 +24,34 @@ else:
     model = None
 
 SYSTEM_INSTRUCTION = """
-তুমি SeiRokom Fashion এর AI সেলস অ্যাসিস্ট্যান্ট।
-তোমার তথ্যের মূল উৎস হলো: https://batikcromfashion.github.io/SeiRokom-Fashion-/
-
-নিয়ম:
-1. কাস্টমারের প্রশ্ন বুঝে ওই ওয়েবসাইট অনুযায়ী সুন্দর বাংলায় উত্তর দাও।
-2. যদি ওয়েবসাইটের বাইরে প্রশ্ন করে (যেমন আবহাওয়া, গল্প), তাহলেও সুন্দর করে উত্তর দিবে।
-3. বাচ্চাদের সাইজ চাইলে বলবে: আমাদের আপাতত বড়দের M,L,XL,XXL আছে, বাচ্চাদের কালেকশন শীঘ্রই আসবে।
-4. কখনো "আপনি '...' বলেছেন" এই লাইনটা বলবে না।
-5. উত্তর ছোট, 2-3 লাইনে রাখবে।
+তুমি SeiRokom Fashion এর AI অ্যাসিস্ট্যান্ট।
+ওয়েবসাইট: https://batikcromfashion.github.io/SeiRokom-Fashion-/
+নিয়ম: বাংলায় ছোট করে উত্তর দাও, M,L,XL,XXL সাইজ আছে বলো।
+"আপনি '...' বলেছেন" বলবে না।
 """
 
-WEBSITE_URL = "https://batikcromfashion.github.io/SeiRokom-Fashion-/"
+BASE_URL = "https://batikcromfashion.github.io/SeiRokom-Fashion-/"
 WHATSAPP_URL = "https://wa.me/8801645008919"
+
+# স্মার্ট লিংক ফাংশন
+def get_smart_link(user_text):
+    text = user_text.lower()
+    # পাঞ্জাবি চেক
+    if "পাঞ্জাবি" in text or "পাঞ্জাবী" in text or "panjabi" in text or "punjabi" in text:
+        return f"{BASE_URL}?search=পাঞ্জাবি"
+    # শার্ট চেক
+    elif "শার্ট" in text or "shirt" in text or "টি-শার্ট" in text or "t-shirt" in text or "tshirt" in text:
+        return f"{BASE_URL}?search=শার্ট"
+    # পোলো
+    elif "পোলো" in text or "polo" in text:
+        return f"{BASE_URL}?search=পোলো"
+    # ডিফল্ট
+    else:
+        return BASE_URL
 
 @app.get("/")
 def home():
-    return {"status": "SeiRokom AI Backend is running OK!"}
+    return {"status": "SeiRokom Smart Link Bot is running!"}
 
 @app.get("/webhook")
 async def verify_webhook(request: Request):
@@ -59,6 +70,10 @@ async def receive_webhook(request: Request):
                 message = event.get("message", {})
                 if sender_id and "text" in message and not message.get("is_echo"):
                     user_text = message["text"]
+                    
+                    # স্মার্ট লিংক বের করা
+                    smart_website_url = get_smart_link(user_text)
+                    
                     bot_text = ""
                     try:
                         if model:
@@ -68,12 +83,20 @@ async def receive_webhook(request: Request):
                         print(f"GEMINI ERROR: {e}")
                     
                     if not bot_text:
-                        bot_text = f"আসসালামু আলাইকুম! '{user_text}' এর জন্য ধন্যবাদ। আমাদের প্রিমিয়াম শার্ট ও পাঞ্জাবি আছে।"
+                        bot_text = f"আপনার প্রশ্নের জন্য ধন্যবাদ! আমাদের প্রিমিয়াম কালেকশন আছে M,L,XL,XXL সাইজে।"
 
                     url = f"https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
                     payload1 = {"recipient": {"id": sender_id}, "message": {"text": bot_text[:1800]}}
                     requests.post(url, json=payload1)
                     
+                    # স্মার্ট বাটন
+                    if "পাঞ্জাবি" in smart_website_url:
+                        button_title = "🟢 পাঞ্জাবি দেখুন"
+                    elif "শার্ট" in smart_website_url:
+                        button_title = "👕 শার্ট দেখুন"
+                    else:
+                        button_title = "🛍️ বিস্তারিত দেখুন"
+
                     payload2 = {
                         "recipient": {"id": sender_id},
                         "message": {
@@ -81,10 +104,10 @@ async def receive_webhook(request: Request):
                                 "type": "template",
                                 "payload": {
                                     "template_type": "button",
-                                    "text": "নিচে থেকে অপশন সিলেক্ট করুন:",
+                                    "text": "নিচে থেকে সিলেক্ট করুন:",
                                     "buttons": [
-                                        {"type": "web_url", "url": WEBSITE_URL, "title": "🛍️ বিস্তারিত দেখুন"},
-                                        {"type": "web_url", "url": WHATSAPP_URL, "title": "💬 হোয়াটসঅ্যাপে যোগাযোগ"}
+                                        {"type": "web_url", "url": smart_website_url, "title": button_title},
+                                        {"type": "web_url", "url": WHATSAPP_URL, "title": "💬 WhatsApp করুন"}
                                     ]
                                 }
                             }
