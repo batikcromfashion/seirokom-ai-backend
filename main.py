@@ -1,8 +1,8 @@
 import os
 import requests
-import google.generativeai as genai
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from google import genai
 
 app = FastAPI()
 app.add_middleware(
@@ -17,8 +17,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "seirokom_secret_token")
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 SYSTEM_INSTRUCTION = """
 আপনি SeiRokom Fashion (সেইরকম ফ্যাশন)-এর অফিশিয়াল AI অ্যাসিস্ট্যান্ট।
@@ -28,11 +27,6 @@ SYSTEM_INSTRUCTION = """
 যদি কেউ বলে 'কেমন আছেন' তাহলে সুন্দর করে উত্তর দাও, একই কথা বারবার বলবে না।
 """
 
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=SYSTEM_INSTRUCTION
-)
-
 @app.get("/")
 def home():
     return {"status": "SeiRokom AI Backend is running fully!"}
@@ -40,48 +34,33 @@ def home():
 @app.get("/webhook")
 async def verify_webhook(request: Request):
     params = request.query_params
-    mode = params.get("hub.mode")
-    token = params.get("hub.verify_token")
-    challenge = params.get("hub.challenge")
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        return Response(content=challenge, status_code=200)
+    if params.get("hub.mode") == "subscribe" and params.get("hub.verify_token") == VERIFY_TOKEN:
+        return Response(content=params.get("hub.challenge"), status_code=200)
     return Response(status_code=403)
 
 @app.post("/webhook")
 async def receive_webhook(request: Request):
     data = await request.json()
-    print(f"Webhook data: {data}")
-    
+    print(f"Webhook: {data}")
     if data.get("object") == "page":
         for entry in data.get("entry", []):
             for event in entry.get("messaging", []):
                 sender_id = event.get("sender", {}).get("id")
                 message = event.get("message", {})
-                
                 if sender_id and "text" in message:
                     user_text = message["text"]
-                    print(f"User {sender_id}: {user_text}")
-
                     try:
-                        # এখানেই আসল AI কল
-                        response = model.generate_content(user_text)
-                        bot_text = response.text.strip()
-                        print(f"Gemini Reply: {bot_text}")
+                        resp = client.models.generate_content(
+                            model="gemini-2.0-flash",
+                            contents=f"{SYSTEM_INSTRUCTION}\n\nUser: {user_text}"
+                        )
+                        bot_text = resp.text.strip()
                     except Exception as e:
                         print(f"GEMINI ERROR: {e}")
-                        bot_text = "আপনার মেসেজের জন্য ধন্যবাদ! আমাদের শার্ট, পাঞ্জাবি M, L, XL, XXL সাইজে available আছে। আপনি কোন প্রোডাক্ট সম্পর্কে জানতে চান?"
+                        bot_text = f"আলহামদুলিল্লাহ ভালো আছি! আপনি '{user_text}' বলেছেন। আমাদের M,L,XL,XXL সাইজে শার্ট, পাঞ্জাবি আছে। কোনটা দেখবেন?"
 
-                    # Facebook এ পাঠানো
-                    send_url = f"https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-                    payload = {
-                        "recipient": {"id": sender_id},
-                        "message": {"text": bot_text[:1900]} # 2000 char limit
-                    }
-                    r = requests.post(send_url, json=payload)
-                    print(f"FB Send: {r.status_code} - {r.text}")
-
+                    url = f"https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
+                    payload = {"recipient": {"id": sender_id}, "message": {"text": bot_text[:1800]}}
+                    r = requests.post(url, json=payload)
+                    print(f"FB Send: {r.status_code}")
     return Response(content="ok", status_code=200)
-
-def send_message(recipient_id, text):
-    url = f"https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-    requests.post(url, json={"recipient": {"id": recipient_id}, "message": {"text": text}})
