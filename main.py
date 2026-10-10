@@ -1,6 +1,5 @@
 import os
 import requests
-import asyncio
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
@@ -21,65 +20,27 @@ else:
 BASE_URL = "https://batikcromfashion.github.io/SeiRokom-Fashion-/"
 WHATSAPP_URL = "https://wa.me/8801645008919"
 
-# তোমার ম্যাপ আগের মতই থাকবে
+# ফুটারে তোমার চাওয়া লেখা
+FOOTER_TEXT = "SeiRokom Fashion সম্পর্কে জানতে\nআরও কোন প্রশ্ন থাকলে করুন, নগদ উত্তর দিচ্ছি 🫶🇧🇩❤️🤲"
+
 PRODUCT_MAP = {
     "পাঞ্জাবি": "product-premium-panjabi.html?from=messenger",
     "premium panjabi": "product-premium-panjabi.html?from=messenger",
     "শার্ট": "product-casual-shirt.html?from=messenger",
     "casual shirt": "product-casual-shirt.html?from=messenger",
     "পোলো": "product-polo-tshirt.html?from=messenger",
-    "polo tshirt": "product-polo-tshirt.html?from=messenger",
+    "polo": "product-polo-tshirt.html?from=messenger",
     "প্যান্ট": "product-denim-pant.html?from=messenger",
-    "denim pant": "product-denim-pant.html?from=messenger",
     "বাচ্চা": "kids.html?from=messenger",
-    "kids": "kids.html?from=messenger",
-    "বয়েজ টি-শার্ট": "product-boys-tshirt.html?from=messenger",
-    "boys tshirt": "product-boys-tshirt.html?from=messenger",
-    "গার্লস ফ্রক": "product-girls-frock.html?from=messenger",
-    "girls frock": "product-girls-frock.html?from=messenger",
-    "কিডস সেট": "product-kids-set.html?from=messenger",
     "কুর্তি": "product-kurti.html?from=messenger",
-    "kurti": "product-kurti.html?from=messenger",
     "থ্রি-পিস": "product-ladies-3-piece.html?from=messenger",
-    "3 piece": "product-ladies-3-piece.html?from=messenger",
     "শাড়ি": "product-saree.html?from=messenger",
-    "saree": "product-saree.html?from=messenger",
-    "শীতের": "mens-winter.html?from=messenger",
-    "winter": "new-collection-winter.html?from=messenger",
+    "শীত": "new-collection-winter.html?from=messenger",
+    "নতুন": "new-collection.html?from=messenger",
     "ছেলেদের": "mens.html?from=messenger",
-    "mens": "mens.html?from=messenger",
     "মেয়েদের": "womens.html?from=messenger",
-    "womens": "womens.html?from=messenger",
-    "নতুন কালেকশন": "new-collection.html?from=messenger",
-    "new collection": "new-collection.html?from=messenger",
-    "হোম": "index.html?from=messenger",
-    "home": "index.html?from=messenger",
-    "কার্ট": "cart.html?from=messenger",
-    "cart": "cart.html?from=messenger",
-    "চেকআউট": "checkout.html?from=messenger",
-    "checkout": "checkout.html?from=messenger",
-    "উইশলিস্ট": "wishlist.html?from=messenger",
-    "wishlist": "wishlist.html?from=messenger",
-    "সাইজ": "size-guide.html?from=messenger",
-    "size guide": "size-guide.html?from=messenger",
-    "শিপিং": "shipping-info.html?from=messenger",
-    "shipping": "shipping-info.html?from=messenger",
-    "অর্ডার ট্র্যাক": "order-tracking.html?from=messenger",
-    "order tracking": "order-tracking.html?from=messenger",
-    "রিটার্ন": "return-policy.html?from=messenger",
-    "return policy": "return-policy.html?from=messenger",
-    "প্রাইভেসি": "privacy-policy.html?from=messenger",
-    "privacy": "privacy-policy.html?from=messenger",
-    "শর্ত": "terms-and-conditions.html?from=messenger",
-    "terms": "terms-and-conditions.html?from=messenger",
-    "জিজ্ঞাসা": "faq.html?from=messenger",
-    "faq": "faq.html?from=messenger",
     "যোগাযোগ": "contact.html?from=messenger",
-    "contact": "contact.html?from=messenger",
-    "আমাদের সম্পর্কে": "about.html?from=messenger",
-    "about": "about.html?from=messenger",
-    "ডিলার": "stock-partner.html?from=messenger",
-    "ড্রপশিপ": "dropship.html?from=messenger",
+    "হোম": "index.html?from=messenger",
 }
 
 def get_smart_product(user_text):
@@ -89,39 +50,44 @@ def get_smart_product(user_text):
             return BASE_URL + file, key
     return BASE_URL + "?from=messenger", "হোম পেজ"
 
-# *** এইখানে আসল পরিবর্তন - প্রফেশনাল এবং বিস্তারিত ***
-SYSTEM_INSTRUCTION = """তুমি SeiRokom Fashion এর প্রফেশনাল AI সহকারী।
-তুমি বাংলায় সুন্দর, ভদ্র, এবং বিস্তারিত উত্তর দিবে। কখনোই ছোট বা শর্টকাট উত্তর দিবে না।
-প্রতিটি উত্তরে প্রোডাক্টের ফেব্রিক, সাইজ M,L,XL,XXL, দাম, এবং কেন কিনবে তা বুঝিয়ে বলবে।
-ইমোজি ব্যবহার করবে এবং শেষে সবসময় বলবে বিস্তারিত তথ্য নিচের লিংকে পাবেন।"""
+SYSTEM_PROMPT = """তুমি SeiRokom Fashion এর সিনিয়র প্রফেশনাল কাস্টমার সাপোর্ট AI।
+তোমার কাজ:
+1. User যা প্রশ্ন করবে, তার সাথে 100% মিল রেখে উত্তর দিবে। যদি সালাম দেয়, সালামের উত্তর দিবে। যদি দাম জিজ্ঞেস করে, দাম নিয়ে বলবে। যদি কেমন আছো বলে, তার উত্তর দিবে।
+2. উত্তর অবশ্যই 8 থেকে 10 লাইনের মধ্যে, প্রফেশনাল, বন্ধুত্বপূর্ণ, ইমোজি সহ, বাংলায়।
+3. উত্তরে প্রোডাক্টের ফেব্রিক, সাইজ M,L,XL,XXL, আরামদায়ক, স্টাইলিশ এইগুলো উল্লেখ করবে।
+4. কখনোই "হোম পেজ নিয়ে বিস্তারিত" এই একই কথা বারবার বলবে না। প্রশ্ন অনুযায়ী উত্তর বদলাবে।
+5. শেষ লাইনে বলবে: বিস্তারিত নিচের লিংকে দেখুন।
+"""
 
-# ডাবল মেসেজ আটকানোর জন্য
-processed_messages = set()
+processed = set()
 
 def send_reply(sender_id, user_text):
     try:
-        if user_text in processed_messages:
-            return
-        processed_messages.add(user_text)
-        if len(processed_messages) > 100:
-            processed_messages.clear()
+        if user_text in processed: return
+        processed.add(user_text)
+        if len(processed) > 200: processed.clear()
 
         smart_url, matched_key = get_smart_product(user_text)
+        
+        # সালাম চেক
+        is_greeting_only = user_text.strip().lower() in ["আসসালামু আলাইকুম", "assalamu alaikum", "সালাম", "হ্যালো", "hello", "hi"]
+        
         bot_text = ""
         try:
             if model:
-                resp = model.generate_content(f"{SYSTEM_INSTRUCTION}\nUser asked about {matched_key}: {user_text}\nAnswer in Bengali professionally in 3-4 lines.")
+                full_prompt = f"{SYSTEM_PROMPT}\n\nUser এর প্রশ্ন: '{user_text}'\nMatched Product: {matched_key}\n\nএখন 8/10 লাইনে প্রফেশনাল উত্তর দাও বাংলায়।"
+                resp = model.generate_content(full_prompt)
                 bot_text = resp.text.strip()
-        except:
-            pass
-        
+        except Exception as e:
+            print(f"Gemini Error: {e}")
+
         if not bot_text:
-            bot_text = f"জ্বি, {matched_key} নিয়ে বিস্তারিত তথ্য নিচের লিংকে পাবেন।"
+            bot_text = f"ওয়ালাইকুম আসসালাম! 😊\nআপনার প্রশ্নটি হলো: {user_text}\n\nSeiRokom Fashion এ আমরা প্রিমিয়াম কোয়ালিটি পাঞ্জাবি, শার্ট, পোলো, থ্রি-পিস, শাড়ি সহ সব ধরনের ফ্যাশন নিয়ে কাজ করি।\nআমাদের সব প্রোডাক্ট 100% কটন/প্রিমিয়াম ফেব্রিক, সাইজ M, L, XL, XXL এভেইলেবল।\nখুবই আরামদায়ক এবং স্টাইলিশ ডিজাইন।\nআপনি অনলাইনে অর্ডার করতে পারবেন সারা বাংলাদেশে ক্যাশ অন ডেলিভারি।\nবিস্তারিত নিচের লিংকে দেখুন।"
 
         api_url = f"https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-        
-        # শুধু ১টা মেসেজ পাঠাবো - বাটন সহ, ডাবল না
-        payload = {
+
+        # 1. প্রথমে 8/10 লাইনের প্রফেশনাল উত্তর + 2টা বাটন
+        payload1 = {
             "recipient": {"id": sender_id},
             "message": {
                 "attachment": {
@@ -130,19 +96,29 @@ def send_reply(sender_id, user_text):
                         "template_type": "button",
                         "text": bot_text[:640],
                         "buttons": [
-                            {"type": "web_url", "url": smart_url, "title": f"📁 {matched_key}"},
+                            {"type": "web_url", "url": smart_url, "title": f"📁 {matched_key} দেখুন"},
                             {"type": "web_url", "url": WHATSAPP_URL, "title": "💬 WhatsApp"}
                         ]
                     }
                 }
             }
         }
-        requests.post(api_url, json=payload, timeout=10)
+        requests.post(api_url, json=payload1, timeout=15)
+
+        # 2. বাটনের নিচে তোমার চাওয়া ছোট 2 লাইনের লেখা - যাতে বিভ্রান্ত না হয়
+        import time
+        time.sleep(0.5)
+        payload2 = {
+            "recipient": {"id": sender_id},
+            "message": {"text": FOOTER_TEXT}
+        }
+        requests.post(api_url, json=payload2, timeout=15)
+
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Send Error: {e}")
 
 @app.get("/")
-def home(): return {"status": "SeiRokom Full Map Bot Running - Fixed"}
+def home(): return {"status": "SeiRokom Final Pro Bot Running"}
 
 @app.get("/webhook")
 async def verify_webhook(request: Request):
@@ -160,8 +136,5 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
                 sender_id = event.get("sender", {}).get("id")
                 message = event.get("message", {})
                 if sender_id and "text" in message and not message.get("is_echo"):
-                    user_text = message["text"]
-                    # Background এ পাঠাবো, তাই Facebook সাথে সাথে 200 পাবে এবং Retry করবে না - ডাবল বন্ধ
-                    background_tasks.add_task(send_reply, sender_id, user_text)
-    # সাথে সাথে OK বলে দাও
+                    background_tasks.add_task(send_reply, sender_id, message["text"])
     return Response(content="EVENT_RECEIVED", status_code=200)
