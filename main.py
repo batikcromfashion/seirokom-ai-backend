@@ -1,5 +1,6 @@
 import os
 import requests
+import time
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
@@ -20,12 +21,13 @@ else:
 BASE_URL = "https://batikcromfashion.github.io/SeiRokom-Fashion-/"
 WHATSAPP_URL = "https://wa.me/8801645008919"
 
-# ফুটারে তোমার চাওয়া লেখা
+# ফুটারে তোমার চাওয়া ২ লাইনের লেখা
 FOOTER_TEXT = "SeiRokom Fashion সম্পর্কে জানতে\nআরও কোন প্রশ্ন থাকলে করুন, নগদ উত্তর দিচ্ছি 🫶🇧🇩❤️🤲"
 
 PRODUCT_MAP = {
     "পাঞ্জাবি": "product-premium-panjabi.html?from=messenger",
     "premium panjabi": "product-premium-panjabi.html?from=messenger",
+    "পাঞ্জাবি পাঞ্জাবি": "product-premium-panjabi.html?from=messenger",
     "শার্ট": "product-casual-shirt.html?from=messenger",
     "casual shirt": "product-casual-shirt.html?from=messenger",
     "পোলো": "product-polo-tshirt.html?from=messenger",
@@ -50,43 +52,50 @@ def get_smart_product(user_text):
             return BASE_URL + file, key
     return BASE_URL + "?from=messenger", "হোম পেজ"
 
-SYSTEM_PROMPT = """তুমি SeiRokom Fashion এর সিনিয়র প্রফেশনাল কাস্টমার সাপোর্ট AI।
-তোমার কাজ:
-1. User যা প্রশ্ন করবে, তার সাথে 100% মিল রেখে উত্তর দিবে। যদি সালাম দেয়, সালামের উত্তর দিবে। যদি দাম জিজ্ঞেস করে, দাম নিয়ে বলবে। যদি কেমন আছো বলে, তার উত্তর দিবে।
-2. উত্তর অবশ্যই 8 থেকে 10 লাইনের মধ্যে, প্রফেশনাল, বন্ধুত্বপূর্ণ, ইমোজি সহ, বাংলায়।
-3. উত্তরে প্রোডাক্টের ফেব্রিক, সাইজ M,L,XL,XXL, আরামদায়ক, স্টাইলিশ এইগুলো উল্লেখ করবে।
-4. কখনোই "হোম পেজ নিয়ে বিস্তারিত" এই একই কথা বারবার বলবে না। প্রশ্ন অনুযায়ী উত্তর বদলাবে।
-5. শেষ লাইনে বলবে: বিস্তারিত নিচের লিংকে দেখুন।
+# ১০০% মানবিক এবং প্রফেশনাল Prompt
+SYSTEM_PROMPT = """তুমি SeiRokom Fashion এর সিনিয়র, ভদ্র, প্রফেশনাল AI সাপোর্ট।
+
+কঠোর নিয়ম:
+1. কখনোই "আপনার প্রশ্নটি হলো:" এই বাক্যটি লিখবে না। কখনোই না।
+2. যদি User বলে "আপনি কেমন আছেন" -> উত্তর: "ওয়ালাইকুম আসসালাম! 😊 আলহামদুলিল্লাহ, আমি ভালো আছি। আপনি কেমন আছেন? SeiRokom Fashion এ আপনাকে স্বাগতম! আপনার জন্য কিভাবে সাহায্য করতে পারি?" তারপর ফ্যাশন নিয়ে 4-5 লাইন যোগ করো।
+3. যদি সালাম দেয়, সুন্দরভাবে ওয়ালাইকুম আসসালাম দিয়ে শুরু করো।
+4. উত্তর অবশ্যই 8 থেকে 10 লাইনে, বাংলায়, প্রফেশনাল, বন্ধুত্বপূর্ণ, ইমোজি সহ।
+5. প্রতিটি উত্তরে আমাদের প্রোডাক্টের গুণগত মান - 100% কটন/প্রিমিয়াম ফেব্রিক, সাইজ M, L, XL, XXL, আরামদায়ক, স্টাইলিশ, সারা বাংলাদেশে ক্যাশ অন ডেলিভারি - এইগুলো স্মার্টভাবে যোগ করো।
+6. প্রশ্নের সাথে 100% মিল রেখে উত্তর দাও, একই উত্তর বারবার দিও না।
+7. শেষ লাইনে বলবে: "বিস্তারিত নিচের লিংকে দেখুন।"
 """
 
 processed = set()
 
 def send_reply(sender_id, user_text):
     try:
-        if user_text in processed: return
+        if not user_text or user_text in processed: 
+            return
         processed.add(user_text)
-        if len(processed) > 200: processed.clear()
+        if len(processed) > 200: 
+            processed.clear()
 
         smart_url, matched_key = get_smart_product(user_text)
-        
-        # সালাম চেক
-        is_greeting_only = user_text.strip().lower() in ["আসসালামু আলাইকুম", "assalamu alaikum", "সালাম", "হ্যালো", "hello", "hi"]
-        
         bot_text = ""
+
         try:
             if model:
-                full_prompt = f"{SYSTEM_PROMPT}\n\nUser এর প্রশ্ন: '{user_text}'\nMatched Product: {matched_key}\n\nএখন 8/10 লাইনে প্রফেশনাল উত্তর দাও বাংলায়।"
+                full_prompt = f"{SYSTEM_PROMPT}\n\nUser এর বর্তমান প্রশ্ন: '{user_text}'\nএই প্রশ্নের সাথে মিল রেখে এখন 8/10 লাইনে সেরা প্রফেশনাল উত্তর দাও।"
                 resp = model.generate_content(full_prompt)
                 bot_text = resp.text.strip()
         except Exception as e:
             print(f"Gemini Error: {e}")
 
+        # Fallback - যদি Gemini Fail করে, তাও রোবোটিক লেখা আসবে না
         if not bot_text:
-            bot_text = f"ওয়ালাইকুম আসসালাম! 😊\nআপনার প্রশ্নটি হলো: {user_text}\n\nSeiRokom Fashion এ আমরা প্রিমিয়াম কোয়ালিটি পাঞ্জাবি, শার্ট, পোলো, থ্রি-পিস, শাড়ি সহ সব ধরনের ফ্যাশন নিয়ে কাজ করি।\nআমাদের সব প্রোডাক্ট 100% কটন/প্রিমিয়াম ফেব্রিক, সাইজ M, L, XL, XXL এভেইলেবল।\nখুবই আরামদায়ক এবং স্টাইলিশ ডিজাইন।\nআপনি অনলাইনে অর্ডার করতে পারবেন সারা বাংলাদেশে ক্যাশ অন ডেলিভারি।\nবিস্তারিত নিচের লিংকে দেখুন।"
+            if "কেমন" in user_text:
+                bot_text = "ওয়ালাইকুম আসসালাম! 😊\nআলহামদুলিল্লাহ, আমি ভালো আছি। আপনি কেমন আছেন?\n\nSeiRokom Fashion এ আপনাকে স্বাগতম! ❤️\nআমরা প্রিমিয়াম কোয়ালিটি পাঞ্জাবি, শার্ট, পোলো, থ্রি-পিস, শাড়ি নিয়ে কাজ করি।\nআমাদের সব প্রোডাক্ট 100% কটন/প্রিমিয়াম ফেব্রিক, সাইজ M, L, XL, XXL এভেইলেবল।\nখুবই আরামদায়ক এবং স্টাইলিশ ডিজাইন, যা আপনাকে দিবে প্রিমিয়াম লুক।\nসারা বাংলাদেশে ক্যাশ অন ডেলিভারি পাচ্ছেন।\nবিস্তারিত নিচের লিংকে দেখুন।"
+            else:
+                bot_text = f"আসসালামু আলাইকুম! 😊\nআপনাকে SeiRokom Fashion এ স্বাগতম!\n\nআমরা প্রিমিয়াম কোয়ালিটি পাঞ্জাবি, শার্ট, পোলো, থ্রি-পিস, শাড়ি সহ সব ফ্যাশন নিয়ে কাজ করি।\nআমাদের প্রোডাক্ট 100% কটন/প্রিমিয়াম ফেব্রিক, সাইজ M, L, XL, XXL এভেইলেবল।\nখুবই আরামদায়ক এবং স্টাইলিশ ডিজাইন।\nআপনি ঘরে বসে সারা বাংলাদেশে ক্যাশ অন ডেলিভারিতে অর্ডার করতে পারবেন।\nবিস্তারিত নিচের লিংকে দেখুন।"
 
         api_url = f"https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
 
-        # 1. প্রথমে 8/10 লাইনের প্রফেশনাল উত্তর + 2টা বাটন
+        # 1. 8/10 লাইনের উত্তর + 2টা বাটন (তোমার চাওয়া WhatsApp লেখা সহ)
         payload1 = {
             "recipient": {"id": sender_id},
             "message": {
@@ -97,17 +106,17 @@ def send_reply(sender_id, user_text):
                         "text": bot_text[:640],
                         "buttons": [
                             {"type": "web_url", "url": smart_url, "title": f"📁 {matched_key} দেখুন"},
-                            {"type": "web_url", "url": WHATSAPP_URL, "title": "💬 WhatsApp"}
+                            {"type": "web_url", "url": WHATSAPP_URL, "title": "জরুরি প্রয়োজনে WhatsApp"}
                         ]
                     }
                 }
             }
         }
-        requests.post(api_url, json=payload1, timeout=15)
+        r1 = requests.post(api_url, json=payload1, timeout=15)
+        print(f"Button Sent: {r1.status_code}")
 
-        # 2. বাটনের নিচে তোমার চাওয়া ছোট 2 লাইনের লেখা - যাতে বিভ্রান্ত না হয়
-        import time
-        time.sleep(0.5)
+        # 2. বাটনের নিচে 2 লাইনের ছোট ফুটার
+        time.sleep(0.7)
         payload2 = {
             "recipient": {"id": sender_id},
             "message": {"text": FOOTER_TEXT}
@@ -118,7 +127,7 @@ def send_reply(sender_id, user_text):
         print(f"Send Error: {e}")
 
 @app.get("/")
-def home(): return {"status": "SeiRokom Final Pro Bot Running"}
+def home(): return {"status": "SeiRokom Final Pro Bot Running - V4"}
 
 @app.get("/webhook")
 async def verify_webhook(request: Request):
