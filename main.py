@@ -11,6 +11,8 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "seirokom_secret_token")
+# --- নতুন Token তোমার App এর জন্য ---
+FB_PAGE_TOKEN_SOHIDUL = os.getenv("FB_PAGE_TOKEN_SOHIDUL")
 
 model = None
 if GEMINI_API_KEY:
@@ -24,49 +26,31 @@ BASE_URL = "https://batikcromfashion.github.io/SeiRokom-Fashion-/"
 WHATSAPP_URL = "https://wa.me/8801645008919"
 FOOTER_TEXT = "SeiRokom Fashion সম্পর্কে জানতে\nআরও কোন প্রশ্ন থাকলে করুন, নগদ উত্তর দিচ্ছি 🫶🇧🇩❤️🤲"
 
-# --- FIX: সব বানান যোগ করা হলো, যাতে ভুল বানানেও কাজ করে ---
 SMART_MAP = [
-    # পাঞ্জাবি - সব বানান
     (["পাঞ্জাবি", "পাঞ্জাবী", "পানজাবি", "পানজাবী", "panjabi", "punjabi"], "product-premium-panjabi.html?from=messenger", "পাঞ্জাবি"),
-    # শার্ট
     (["শার্ট", "শাট", "shirt", "শার্টের"], "product-casual-shirt.html?from=messenger", "শার্ট"),
-    # পোলো
     (["পোলো", "polo"], "product-polo-tshirt.html?from=messenger", "পোলো"),
-    # প্যান্ট
     (["প্যান্ট", "পেন্ট", "pant", "ডেনিম"], "product-denim-pant.html?from=messenger", "প্যান্ট"),
-    # বাচ্চাদের
     (["বাচ্চা", "বাচ্চাদের", "kids", "শিশু"], "kids.html?from=messenger", "বাচ্চাদের"),
-    # থ্রি-পিস
     (["থ্রি-পিস", "থ্রি পিস", "3-piece", "3 piece"], "product-ladies-3-piece.html?from=messenger", "থ্রি-পিস"),
-    # শাড়ি
     (["শাড়ি", "শারি", "saree", "শাড়ির"], "product-saree.html?from=messenger", "শাড়ি"),
-    # কুর্তি
     (["কুর্তি", "kurti"], "product-kurti.html?from=messenger", "কুর্তি"),
-    # শীত
     (["শীত", "winter", "জ্যাকেট"], "new-collection-winter.html?from=messenger", "শীতের"),
-    # নতুন
     (["নতুন", "new collection"], "new-collection.html?from=messenger", "নতুন"),
-    # ছেলেদের
     (["ছেলেদের", "mens", "ছেলে"], "mens.html?from=messenger", "ছেলেদের"),
-    # মেয়েদের
     (["মেয়েদের", "womens", "মেয়ে"], "womens.html?from=messenger", "মেয়েদের"),
 ]
 
 def get_smart_product(user_text):
     text = user_text.lower().strip()
-    # প্রথমে প্রোডাক্ট চেক
     for keywords, file, nice_name in SMART_MAP:
         for kw in keywords:
             if kw.lower() in text:
                 return BASE_URL + file, nice_name
-    
-    # যদি SeiRokom Fashion / Website / হোমপেজ নিয়ে প্রশ্ন করে, তখনই শুধু হোমপেজ
     home_keywords = ["seirokom", "সেইরকম", "website", "ওয়েবসাইট", "হোমপেজ", "home page", "homepage"]
     for kw in home_keywords:
         if kw in text:
             return BASE_URL + "?from=messenger", "হোমপেজ"
-            
-    # কিছু না মিললে হোমপেজ (Default)
     return BASE_URL + "?from=messenger", "হোমপেজ"
 
 SYSTEM_PROMPT = """তুমি SeiRokom Fashion এর প্রফেশনাল AI।
@@ -104,10 +88,8 @@ def send_reply(sender_id, user_text):
         if not user_text or user_text in processed: return
         processed.add(user_text)
         if len(processed) > 200: processed.clear()
-
         smart_url, product_name = get_smart_product(user_text)
         bot_text = ""
-
         try:
             if model:
                 prompt = f"{SYSTEM_PROMPT}\nUser প্রশ্ন: '{user_text}'\nProduct: {product_name}\nএই প্রোডাক্ট নিয়ে 8-10 লাইনে উত্তর দাও।"
@@ -115,13 +97,9 @@ def send_reply(sender_id, user_text):
                 bot_text = resp.text.strip()
         except Exception as e:
             print(f"Gemini Error: {e}")
-
         if not bot_text:
             bot_text = get_fallback(product_name, user_text)
-
         api_url = f"https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-
-        # বাটনে এখন ডাইনামিক লেখা আসবে - যেমন পাঞ্জাবি দেখুন
         payload1 = {
             "recipient": {"id": sender_id},
             "message": {
@@ -139,14 +117,12 @@ def send_reply(sender_id, user_text):
             }
         }
         requests.post(api_url, json=payload1, timeout=15)
-
         time.sleep(0.7)
         payload2 = {
             "recipient": {"id": sender_id},
             "message": {"text": FOOTER_TEXT}
         }
         requests.post(api_url, json=payload2, timeout=15)
-
     except Exception as e:
         print(f"Send Error: {e}")
 
@@ -171,3 +147,31 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
                 if sender_id and "text" in message and not message.get("is_echo"):
                     background_tasks.add_task(send_reply, sender_id, message["text"])
     return Response(content="EVENT_RECEIVED", status_code=200)
+
+# ============================================================
+# --- নতুন ২টা API - তোমার App এর জন্য - Not Found ঠিক করবে ---
+# ============================================================
+@app.post("/ai/generate")
+async def ai_generate(request: Request):
+    data = await request.json()
+    prompt = data.get("prompt", "Eid Collection")
+    try:
+        if model:
+            resp = model.generate_content(f"SeiRokom Fashion এর জন্য সুন্দর ফেসবুক ক্যাপশন বানাও: {prompt}. ইমোজি, হ্যাশট্যাগ সহ, বাংলায়।")
+            return {"result": resp.text}
+    except Exception as e:
+        print(e)
+    return {"result": f"✨ সেইরকম ফ্যাশনে ঈদ কালেকশন চলে এসেছে!\n👕 {prompt}\n📦 সারা বাংলাদেশে হোম ডেলিভারি\n\nঅর্ডার করতে এখনই ইনবক্স করুন 🇧🇩\n#SeiRokom #Eid2026"}
+
+@app.post("/facebook/post")
+async def facebook_post(request: Request):
+    data = await request.json()
+    message = data.get("message", "")
+    PAGE_ID = "119701757791186"
+    PAGE_TOKEN = FB_PAGE_TOKEN_SOHIDUL or PAGE_ACCESS_TOKEN
+    if not PAGE_TOKEN:
+        return {"error": "Token পাওয়া যায়নি - Render এ FB_PAGE_TOKEN_SOHIDUL বসাও"}
+    url = f"https://graph.facebook.com/{PAGE_ID}/feed"
+    payload = {"message": message, "access_token": PAGE_TOKEN}
+    r = requests.post(url, data=payload)
+    return r.json()
